@@ -1,23 +1,189 @@
 <!DOCTYPE html>
-<html xmlns="http://www.w3.org/1999/xhtml"
-	xmlns:h="http://xmlns.jcp.org/jsf/html"
-	xmlns:f="http://xmlns.jcp.org/jsf/core"
-	xmlns:pt="http://xmlns.jcp.org/jsf/passthrough"
-	xmlns:jsf="http://xmlns.jcp.org/jsf"
-	xmlns:ui="http://xmlns.jcp.org/jsf/facelets"
-	xmlns:p="http://primefaces.org/ui">
-
-    <h:head>
-        <title>PrimeFaces Test</title>
-        <h:outputScript name="test.js" />
+<html
+  xmlns="http://www.w3.org/1999/xhtml"
+  xmlns:h="http://xmlns.jcp.org/jsf/html"
+  xmlns:f="http://xmlns.jcp.org/jsf/core"
+  xmlns:pt="http://xmlns.jcp.org/jsf/passthrough"
+  xmlns:jsf="http://xmlns.jcp.org/jsf"
+  xmlns:ui="http://xmlns.jcp.org/jsf/facelets"
+  xmlns:p="http://primefaces.org/ui"
+  xmlns:pe="http://primefaces.org/ui/extensions"
+>
+  <h:head>
+    <title>PrimeFaces Test</title>
+  </h:head>
+  <h:body>
+    <h:form id="frmTest"> </h:form>
+    <ui:composition template="/templates/template.xhtml">
+      <ui:define name="content">
         <h:outputStylesheet name="test.css" />
-    </h:head>
-    <h:body>
+        <h:outputScript name="test.js" />
+        <p:growl id="growl" showDetail="true" showSummary="true">
+          <p:autoUpdate />
+        </p:growl>
+        <p:card>
+          <f:facet name="title">Manage Library</f:facet>
+          <h:form id="libraryForm">
+            <p:remoteCommand
+              name="onLibrarySelect"
+              action="#{libraryBean.onLibrarySelect}"
+              update="sheet"
+              oncomplete="updateSheet();"
+            />
+            <p:toolbar>
+              <p:toolbarGroup align="left">
+                <p:selectOneButton
+                  value="#{libraryBean.selectedLibrary}"
+                  onchange="onLibrarySelect()"
+                  unselectable="false"
+                >
+                  <f:selectItem itemLabel="Movies" itemValue="Movies" />
+                  <f:selectItem itemLabel="Books" itemValue="Books" />
+                </p:selectOneButton>
+              </p:toolbarGroup>
+              <p:toolbarGroup align="right">
+                <p:commandButton
+                  value="Fetch Latest"
+                  action="#{libraryBean.update}"
+                  update="sheet"
+                  oncomplete="updateSheet()"
+                  style="margin-right: 1em"
+                />
+                <p:commandButton
+                  value="Reset"
+                  action="#{libraryBean.reset}"
+                  update="sheet"
+                  oncomplete="updateSheet()"
+                />
+              </p:toolbarGroup>
+            </p:toolbar>
+            <pe:sheet
+              id="sheet"
+              widgetVar="sheetWidget"
+              value="#{libraryBean.libraryItems}"
+              var="row"
+              rowKey="#{row.id}"
+              showRowHeaders="true"
+              resizableCols="true"
+              resizableRows="true"
+              readOnly="false"
+              height="500"
+              extender="sheetExtender"
+            >
+              <p:ajax
+                event="change"
+                listener="#{libraryBean.onCellChange}"
+                update="growl"
+              />
+              <pe:sheetcolumn headerText="Title" value="#{row.name}" />
+              <f:facet name="footer">
+                <h:outputText
+                  id="numRecords"
+                  value="#{libraryBean.libraryItems.size()} Record(s)"
+                />
+              </f:facet>
+            </pe:sheet>
 
-        <h1>#{testView.string}</h1>
-        <h:form id="frmTest">
-            
-        </h:form>
+            <p:remoteCommand
+              name="removeRowRC"
+              action="#{libraryBean.onRowRemove}"
+              update="numRecords"
+            />
+            <p:remoteCommand
+              name="addRowRC"
+              action="#{libraryBean.onRowAdd}"
+              update="numRecords"
+            />
+          </h:form>
+        </p:card>
 
-    </h:body>
+        <script type="text/javascript">
+          $(document).ready(function () {
+            updateSheet();
+          });
+
+          function sheetExtender() {
+            console.log("sheetExtender called");
+            this.cfg.trimWhitespace = true;
+          }
+
+          function updateSheet() {
+            console.log("updateSheet called");
+            var $hot = PF("sheetWidget").ht;
+            $hot.updateSettings({
+              contextMenu: {
+                callback: function (key, options) {
+                  if (key == "remove_row") {
+                    setTimeout(() => {
+                      console.log(options);
+                      let startIdx = options[0]["start"]["row"];
+                      let endIdx = options[0]["end"]["row"];
+                      console.log("removing");
+                      handleRowRemove(startIdx, endIdx);
+                    }, 100);
+                  } else if (key === "row_above") {
+                    console.log(options);
+                    let startIdx = options[0]["start"]["row"];
+                    let endIdx = options[0]["end"]["row"];
+                    console.log("adding row");
+                    handleRowAdd(startIdx, "above");
+                  }
+                },
+                items: {
+                  row_above: {
+                    name: "Insert row above",
+                    callback: function (key, options) {
+                      $hot.alter("insert_row", $hot.getSelectedLast()[0]);
+                      // does some things after click
+                    },
+                  },
+                  remove_row: {
+                    name: "Remove row(s)",
+                    disabled: function () {
+                      // if first row, disable this option
+                      return $hot.getSelected()[0] === 0;
+                    },
+                  },
+                },
+              },
+            });
+          }
+
+          function handleRowRemove(startIndex, endIndex) {
+            var promise = removeRowRC([
+              { name: "startIndex", value: startIndex },
+              { name: "endIndex", value: endIndex },
+            ]);
+            promise
+              .then(function (responseData) {
+                console.log(
+                  "handleRowRemove request successful: ",
+                  responseData.status
+                );
+              })
+              .catch(function (error) {
+                console.error("Request failed", error);
+              });
+          }
+
+          function handleRowAdd(startIndex, position) {
+            var promise = addRowRC([
+              { name: "startIndex", value: startIndex },
+              { name: "position", value: position },
+            ]);
+            promise
+              .then(function (responseData) {
+                console.log(
+                  "handleRowAdd request successful: ",
+                  responseData.status
+                );
+              })
+              .catch(function (error) {
+                console.error("Request failed", error);
+              });
+          }
+        </script>
+      </ui:define>
+    </ui:composition>
+  </h:body>
 </html>
